@@ -6,13 +6,12 @@ interface MetricCardProps {
     value: number | string;
     unit?: string;
     icon: ReactNode;
-    colorClass?: string; // Para darle un toque de color al icono/borde
+    colorClass?: string; 
 }
 
 export const MetricCard: React.FC<MetricCardProps> = ({ title, value, unit, icon, colorClass = 'text-gray-600' }) => {
     return (
         <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 flex items-center overflow-hidden relative">
-            {/* Decoración de fondo sutil */}
             <div className={`absolute -right-4 -bottom-4 opacity-10 ${colorClass} transform scale-150 rotate-12`}>
                 {icon}
             </div>

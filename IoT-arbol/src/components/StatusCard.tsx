@@ -9,7 +9,6 @@ interface StatusCardProps {
 }
 
 export const StatusCard: React.FC<StatusCardProps> = ({ title, value, unit, threshold = 10 }) => {
-    // Mantenemos la lógica de color para alertar visualmente (Rojo si es bajo, Azul si es normal)
     const isStable = value > threshold;
 
     const statusStyles = isStable
@@ -28,21 +27,15 @@ export const StatusCard: React.FC<StatusCardProps> = ({ title, value, unit, thre
 
     return (
         <div className={`${statusStyles.bg} ${statusStyles.border} rounded-xl shadow-sm p-6 border flex flex-col justify-between h-full relative overflow-hidden transition-all duration-500`}>
-             {/* Icono de fondo decorativo */}
              <div className="absolute right-2 top-2 opacity-10 text-gray-500 scale-150">
                 <Waves size={64}/>
             </div>
-
-            {/* Encabezado con Icono y Título */}
             <div className="flex items-center mb-2 z-10">
                  <div className={`p-2 rounded-full mr-3 bg-white bg-opacity-60 ${statusStyles.iconColor}`}>
-                    {/* Cambiamos el icono según el estado: Olas (normal) o Alerta (crítico) */}
                     {isStable ? <Waves size={20} /> : <AlertCircle size={20} />}
                  </div>
                 <h3 className={`text-sm font-medium ${statusStyles.text} opacity-80`}>{title}</h3>
             </div>
-            
-            {/* Valor Numérico Grande (Sin textos de estado extra) */}
             <div className="flex items-baseline z-10 mt-2">
                 <span className={`text-5xl font-bold ${statusStyles.text} tracking-tight`}>
                     {value}
