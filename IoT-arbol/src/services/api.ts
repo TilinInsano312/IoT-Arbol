@@ -1,60 +1,128 @@
-// src/services/api.ts
-// src/services/api.ts
 import type { DeviceData, DeviceSummary } from '../types';
 
-// Datos "en el servidor"
-const dbDevices: DeviceData[] = [
-    {
-        id: 'dev_001',
-        name: 'Invernadero Zona Norte (Tomates)',
-        temperature: 26.5,
-        humidity: 55,
-        isWaterLevelStable: true,
-        uvIndex: 8,
-        evapotranspiration: 4.2, // Nuevo valor
-        lastIrrigation: '27 Oct, 08:30 AM',
-    },
-    {
-        id: 'dev_002',
-        name: 'Semillero Exterior',
-        temperature: 19.2,
-        humidity: 70,
-        isWaterLevelStable: false,
-        uvIndex: 4,
-        evapotranspiration: 2.1, // Nuevo valor
-        lastIrrigation: '26 Oct, 06:15 PM',
-    },
-     {
-        id: 'dev_003',
-        name: 'Zona de Cactus',
-        temperature: 31.0,
-        humidity: 20,
-        isWaterLevelStable: true,
-        uvIndex: 10,
-        evapotranspiration: 6.5, // Nuevo valor alto por calor
-        lastIrrigation: '20 Oct, 10:00 AM',
-    },
-];
+const AUTH_CREDENTIALS = {
+    username: import.meta.env.VITE_TB_USERNAME,
+    password: import.meta.env.VITE_TB_PASSWORD
+};
 
-// Simula un retraso de red (ej. 500ms)
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const TARGET_DEVICE_ID = import.meta.env.VITE_TB_DEVICE_ID;
+
+// Variable para guardar el token temporalmente en memoria
+let jwtToken: string | null = null;
+interface TBTelemetryResponse {
+    [key: string]: Array<{
+        ts: number;
+        value: string;
+    }>;
+}
+
+interface TBLoginResponse {
+    token: string;
+    refreshToken: string;
+}
+
 
 /**
- * Simula: GET /api/devices
- * Devuelve solo la lista resumen para el dropdown
+ * 1. Autenticación
  */
-export const fetchDeviceList = async (): Promise<DeviceSummary[]> => {
-    await delay(300); // Simula latencia
-    return dbDevices.map(({ id, name }) => ({ id, name }));
+const login = async (): Promise<string> => {
+    if (jwtToken) return jwtToken;
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify(AUTH_CREDENTIALS),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error en Login: ${response.status}`);
+        }
+
+        const data: TBLoginResponse = await response.json();
+        jwtToken = data.token;
+        return data.token;
+    } catch (error) {
+        console.error("Fallo al autenticar con ThingsBoard", error);
+        throw error;
+    }
 };
 
 /**
- * Simula: GET /api/devices/:id
- * Devuelve los detalles completos de un dispositivo
+ * 2. Obtener lista de dispositivos
  */
-export const fetchDeviceDetails = async (deviceId: string): Promise<DeviceData | null> => {
-    console.log(`Fetching data for... ${deviceId}`);
-    await delay(600); // Simula un poco más de latencia para los detalles
-    const device = dbDevices.find(d => d.id === deviceId);
-    return device || null;
+export const fetchDeviceList = async (): Promise<DeviceSummary[]> => {
+    return [
+        { id: TARGET_DEVICE_ID, name: 'EvapoTranspo' },
+    ];
+};
+
+/**
+ * 3. Obtener detalles del dispositivo
+ */
+const fetchTBTelemetry = async (deviceId: string, keys: string, timeRange: number) => {
+    const token = await login();
+    const endTs = Date.now();
+    const startTs = endTs - timeRange;
+
+    const url = `/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=${keys}&startTs=${startTs}&endTs=${endTs}`;
+
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'X-Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+
+    if (!response.ok) throw new Error(`Error TB: ${response.status}`);
+    return await response.json();
+};
+export const fetchRealTimeData = async (deviceId: string): Promise<Partial<DeviceData> | null> => {
+    try {
+        const data = await fetchTBTelemetry(deviceId, 'temperature,humidity,uv_intensity,water_level', 12 * 60 * 60 * 1000);
+
+        const getValue = (key: string) => {
+            if (data[key] && data[key].length > 0) {
+                return parseFloat(data[key].sort((a: any, b: any) => b.ts - a.ts)[0].value);
+            }
+            return 0;
+        };
+
+        const getLastTs = (key: string) => {
+            if (data[key] && data[key].length > 0) return data[key][0].ts;
+            return Date.now();
+        };
+
+        return {
+            id: deviceId,
+            name: 'TestEvapoTranspo',
+            temperature: getValue('temperature'),
+            humidity: getValue('humidity'),
+            uvIndex: getValue('uv_intensity'),
+            waterLevel: getValue('water_level'),
+            lastIrrigation: new Date(getLastTs('temperature')).toLocaleString('es-CL', {
+                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+            }),
+        };
+    } catch (error) {
+        console.error("Error fetching real-time:", error);
+        return null;
+    }
+};
+
+export const fetchDailyET0 = async (deviceId: string): Promise<number> => {
+    try {
+        const data = await fetchTBTelemetry(deviceId, 'evapotranspiration', 24 * 60 * 60 * 1000);
+        
+        if (data['evapotranspiration'] && data['evapotranspiration'].length > 0) {
+            return parseFloat(data['evapotranspiration'][0].value);
+        }
+        return 0; 
+    } catch (error) {
+        console.error("Error fetching ET0:", error);
+        return 0;
+    }
 };
